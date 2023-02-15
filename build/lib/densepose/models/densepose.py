@@ -49,7 +49,7 @@ class DensePose(GeneralizedRCNN):
             tv.models.resnet.__dict__[backbone_name] = msra_resnet101
             backbone = tv.models.detection.backbone_utils.resnet_fpn_backbone(
                 backbone_name=backbone_name,
-                pretrained=False,
+                pretrained=True,
                 trainable_layers=5,
                 extra_blocks=PanopticExtraFPNBlock(
                     featmap_names=['0', '1', '2', '3'],
@@ -66,7 +66,7 @@ class DensePose(GeneralizedRCNN):
         if backbone is None:
             backbone = tv.models.detection.backbone_utils.resnet_fpn_backbone(
                 backbone_name='resnet101',
-                pretrained=False,
+                pretrained=True,
                 trainable_layers=5,
                 extra_blocks=PanopticExtraFPNBlock(
                     featmap_names=['0', '1', '2', '3'],
@@ -166,3 +166,92 @@ class DensePose(GeneralizedRCNN):
                     file_name=f'densepose_pretrained_msra-resnet101_{VERSION}.pth'
                 )
             )
+
+
+if __name__ == '__main__':
+    model = DensePose()
+    # print(type(models.state_dict()))
+
+    key_map = {}
+
+    with open('../detectron2.csv') as fdd, open('../torch.csv') as fdt:
+        rd = csv.reader(fdd)
+        rt = csv.reader(fdt)
+
+        for frm, to in zip(rt, rd):
+            key_map[frm[0]] = to[0]
+
+    with open('../model.pkl', 'rb') as fd:
+        pkl = pickle.load(fd)
+        # print(pkl.keys())
+        data = pkl['models']
+
+        for k in data.keys():
+            # print(k)
+            pass
+
+    new_state_dict = collections.OrderedDict()
+
+    for k, v in model.state_dict().items():
+        # print(k)
+        new_val = data[key_map[k]]
+        # try:
+        #     new_val = data[key_map[k]]
+        # except KeyError as e:
+        #     new_state_dict[k] = v
+        #     continue
+
+        if k == 'roi_heads.box_predictor.cls_score.weight':
+            new_val = np.flip(new_val, 0).copy()
+
+        if k == 'roi_heads.box_predictor.cls_score.bias':
+            new_val = np.flip(new_val, 0).copy()
+
+        if k == 'roi_heads.box_predictor.bbox_pred.weight':
+            new_val = np.vstack((np.zeros((4, 1024), dtype=new_val.dtype), new_val, ))
+
+        if k == 'roi_heads.box_predictor.bbox_pred.bias':
+            new_val = np.hstack((np.zeros((4,), dtype=new_val.dtype), new_val, ))
+
+        assert new_val.shape == v.shape
+
+        new_state_dict[k] = torch.Tensor(new_val)
+
+    model.load_state_dict(new_state_dict)
+
+    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+
+    model.to(device)
+    model.eval()
+
+    img = PIL.Image.open('../../data/chi.jpg')
+    img_array = np.array(img, dtype=np.float32).transpose((2, 0, 1))
+    img_tensor = torch.from_numpy(img_array).unsqueeze(0)
+
+    results = model(img_tensor.to(device))
+
+    boxes = results[0]['boxes'].to('cpu')
+    scores = results[0]['scores'].to('cpu')
+    coarse_segs = results[0]['coarse_segs'].to('cpu')
+    fine_segs = results[0]['fine_segs'].to('cpu')
+
+    draw = PIL.ImageDraw.Draw(img)
+    for box in boxes:
+        draw.rectangle([(box[0], box[1]), (box[2], box[3])], outline="red", width=3)
+
+    img.save('../data/out_box.jpg')
+
+    seg_img_array = np.zeros(img_array.shape[1:], dtype=np.uint8)
+    for coarse_seg, fine_seg in zip(coarse_segs, fine_segs):
+        coarse_seg = coarse_seg.numpy().astype(np.uint8)
+        fine_seg = fine_seg.numpy().astype(np.uint8)
+        seg = 10 * fine_seg * coarse_seg
+
+        cond = seg_img_array == 0
+        seg_img_array[cond] = seg_img_array[cond] + seg[cond]
+
+    seg_img = PIL.Image.fromarray(seg_img_array)
+    seg_img.save('../data/out_seg.jpg')
+
+    model = model.to('cpu')
+    torch.save(model.state_dict(), '../densepose_pretrained_msra-resnet101.pth')

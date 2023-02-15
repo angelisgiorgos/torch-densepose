@@ -6,7 +6,6 @@ import torch.nn.functional as F
 from torchvision.models.detection.roi_heads import expand_masks, expand_boxes
 from torchvision.models.detection.image_list import ImageList
 from torchvision.models.detection.transform import GeneralizedRCNNTransform
-import torch.nn as nn
 
 
 def paste_mask_in_image(mask: Tensor, box: Tensor, im_h: int, im_w: int) -> Tensor:
@@ -29,8 +28,8 @@ def paste_mask_in_image(mask: Tensor, box: Tensor, im_h: int, im_w: int) -> Tens
     y_1 = min(box[3] + 1, im_h)
 
     im_mask[y_0:y_1, x_0:x_1] = mask[
-                                (y_0 - box[1]):(y_1 - box[1]), (x_0 - box[0]):(x_1 - box[0])
-                                ]
+        (y_0 - box[1]):(y_1 - box[1]), (x_0 - box[0]):(x_1 - box[0])
+    ]
     return im_mask
 
 
@@ -43,7 +42,7 @@ def paste_masks_in_image(masks, boxes, img_shape, padding=1):
     res = [
         paste_mask_in_image(m, b, im_h, im_w)
         for m, b in zip(masks, boxes)
-        ]
+    ]
     if len(res) > 0:
         ret = torch.stack(res, dim=0)
     else:
@@ -51,26 +50,23 @@ def paste_masks_in_image(masks, boxes, img_shape, padding=1):
     return ret
 
 
-class DensePoseRCNNTransform(nn.Module):
+class DensePoseRCNNTransform(GeneralizedRCNNTransform):
     def __init__(self, min_size, max_size, image_mean, image_std):
-        super().__init__()
-        # super(DensePoseRCNNTransform, self).__init__(min_size, max_size, image_mean, image_std)
-        self.grcnn = GeneralizedRCNNTransform(min_size, max_size, image_mean, image_std)
+        super(DensePoseRCNNTransform, self).__init__(min_size, max_size, image_mean, image_std)
 
     def forward(self,
                 images: List[Tensor],
                 targets: Optional[List[Dict[str, Tensor]]] = None
                 ) -> Tuple[ImageList, Optional[List[Dict[str, Tensor]]]]:
         # TODO: DensePose target data transformation
-
-        return self.grcnn(images, targets)
+        return super(DensePoseRCNNTransform, self).forward(images, targets)
 
     def postprocess(self,
                     result: List[Dict[str, Tensor]],
                     image_shapes: List[Tuple[int, int]],
                     original_image_sizes: List[Tuple[int, int]]
                     ) -> List[Dict[str, Tensor]]:
-        result = self.grcnn.postprocess(result, image_shapes, original_image_sizes)
+        result = super(DensePoseRCNNTransform, self).postprocess(result, image_shapes, original_image_sizes)
 
         if self.training:
             return result

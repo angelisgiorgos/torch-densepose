@@ -8,16 +8,16 @@ class MSRABottleneck(nn.Module):
     expansion: int = 4
 
     def __init__(
-            self,
-            inplanes: int,
-            planes: int,
-            stride: int = 1,
-            downsample: Optional[nn.Module] = None,
-            groups: int = 1,
-            base_width: int = 64,
-            dilation: int = 1,
-            norm_layer: Optional[Callable[..., nn.Module]] = None
-            ) -> None:
+        self,
+        inplanes: int,
+        planes: int,
+        stride: int = 1,
+        downsample: Optional[nn.Module] = None,
+        groups: int = 1,
+        base_width: int = 64,
+        dilation: int = 1,
+        norm_layer: Optional[Callable[..., nn.Module]] = None
+    ) -> None:
         super(MSRABottleneck, self).__init__()
         if norm_layer is None:
             norm_layer = nn.BatchNorm2d
@@ -57,7 +57,5 @@ class MSRABottleneck(nn.Module):
 
 
 def msra_resnet101(pretrained: bool = False, progress: bool = True, **kwargs: Any) -> ResNet:
-    # for arg in kwargs.values:
-    #     print(arg)
-    return _resnet(MSRABottleneck, layers=[3, 4, 23, 3],
-                   progress=progress, **kwargs)
+    return _resnet('resnet101', MSRABottleneck, [3, 4, 23, 3], pretrained, progress,
+                   **kwargs)

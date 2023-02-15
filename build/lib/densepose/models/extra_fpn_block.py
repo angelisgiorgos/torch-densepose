@@ -1,14 +1,13 @@
 from torch import Tensor
 import torch.nn as nn
-import torch
+
 from typing import Tuple, List, Optional, Callable
 
-from torchvision.ops.feature_pyramid_network import LastLevelMaxPool, ExtraFPNBlock
+from torchvision.ops.feature_pyramid_network import LastLevelMaxPool
 
 
-class PanopticExtraFPNBlock(ExtraFPNBlock):
-    def __init__(self, featmap_names: List[str], in_channels: int, out_channels: int,
-                 conv_dims: int,
+class PanopticExtraFPNBlock(LastLevelMaxPool):
+    def __init__(self, featmap_names: List[str], in_channels: int, out_channels: int, conv_dims: int,
                  norm_layer: Optional[Callable[..., nn.Module]] = None):
         super(PanopticExtraFPNBlock, self).__init__()
 
@@ -16,8 +15,7 @@ class PanopticExtraFPNBlock(ExtraFPNBlock):
 
         featmap_ids = [int(i) for i in featmap_names]
 
-        self.predictor = nn.Conv2d(conv_dims, out_channels, kernel_size=(1, 1), stride=(1, 1),
-                                   padding=(0, 0))
+        self.predictor = nn.Conv2d(conv_dims, out_channels, kernel_size=(1, 1), stride=(1, 1), padding=(0, 0))
         self.blocks = {}
 
         highest_resolution_featmap_id = featmap_ids[0]
@@ -36,7 +34,7 @@ class PanopticExtraFPNBlock(ExtraFPNBlock):
                     stride=(1, 1),
                     padding=(1, 1),
                     bias=norm_layer is None,
-                    )
+                )
                 ops.append(conv)
 
                 if norm_layer is not None:
@@ -52,33 +50,17 @@ class PanopticExtraFPNBlock(ExtraFPNBlock):
             self.blocks[featmap_id] = nn.Sequential(*ops)
             self.add_module('block{}'.format(featmap_id), self.blocks[featmap_id])
 
-            self.last_level_pool = LastLevelMaxPool()
-
-    @torch.jit.ignore
-    def list_creation(self, results: List[Tensor], features: List[str], names: List[str]) -> \
-            Tuple[List[int],
-                  List[int]]:
-        keys_list = []
-        for k in names:
-            if k in features:
-                keys_list.append(int(k))
-
-        values_list = []
-        for k, v in zip(names, results):
-            if k in features:
-                values_list.append(v)
-        return keys_list, values_list
-
     def forward(
-            self,
-            results: List[Tensor],
-            x: List[Tensor],
-            names: List[str],
-            ) -> Tuple[List[Tensor], List[str]]:
+        self,
+        results: List[Tensor],
+        x: List[Tensor],
+        names: List[str],
+    ) -> Tuple[List[Tensor], List[str]]:
         # TODO: TorchScript support
-        results, names = self.last_level_pool(results, x, names)
+        results, names = super(PanopticExtraFPNBlock, self).forward(results, x, names)
 
-        keys, values = self.list_creation(results, self.featmap_names, names)
+        keys = [int(k) for k in names if k in self.featmap_names]
+        values = [v for k, v in zip(names, results) if k in self.featmap_names]
 
         out = self.blocks[keys[0]](values[0])
 
