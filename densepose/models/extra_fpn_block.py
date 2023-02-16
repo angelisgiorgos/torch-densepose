@@ -21,7 +21,6 @@ class PanopticExtraFPNBlock(ExtraFPNBlock):
         self.blocks = {}
 
         highest_resolution_featmap_id = featmap_ids[0]
-
         for featmap_name, featmap_id in zip(featmap_names, featmap_ids):
             ops = []
             num_upsampling = featmap_id - highest_resolution_featmap_id
@@ -49,15 +48,15 @@ class PanopticExtraFPNBlock(ExtraFPNBlock):
                     upsampling = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False)
                     ops.append(upsampling)
 
-            self.blocks[featmap_id] = nn.Sequential(*ops)
-            self.add_module('block{}'.format(featmap_id), self.blocks[featmap_id])
+            block = nn.Sequential(*ops)
+            self.add_module('block{}'.format(featmap_id), block)
 
             self.last_level_pool = LastLevelMaxPool()
 
     @torch.jit.ignore
     def list_creation(self, results: List[Tensor], features: List[str], names: List[str]) -> \
             Tuple[List[int],
-                  List[int]]:
+                  List[torch.Tensor]]:
         keys_list = []
         for k in names:
             if k in features:
@@ -69,6 +68,10 @@ class PanopticExtraFPNBlock(ExtraFPNBlock):
                 values_list.append(v)
         return keys_list, values_list
 
+    def _get_layer_name(self, i: int):
+        layer_name = "block{}".format(i)
+        return layer_name
+
     def forward(
             self,
             results: List[Tensor],
@@ -76,14 +79,22 @@ class PanopticExtraFPNBlock(ExtraFPNBlock):
             names: List[str],
             ) -> Tuple[List[Tensor], List[str]]:
         # TODO: TorchScript support
+        blocks: torch.Tensor = torch.zeros(1)
+
         results, names = self.last_level_pool(results, x, names)
 
         keys, values = self.list_creation(results, self.featmap_names, names)
 
-        out = self.blocks[keys[0]](values[0])
+        out = getattr(self, 'block0')(values[0])
 
         for k, v in zip(keys[1:], values[1:]):
-            out = out + self.blocks[k](v)
+            if str(k) == '1':
+                blocks = getattr(self, 'block1')(v)
+            elif str(k) == '2':
+                blocks = getattr(self, 'block2')(v)
+            elif str(k) == '3':
+                blocks = getattr(self, 'block3')(v)
+            out = out + blocks
 
         results.append(self.predictor(out))
         names.append('panoptic_feature')
