@@ -2,7 +2,8 @@ import torch
 import PIL.Image
 import PIL.ImageDraw
 import numpy as np
-from densepose import DensePose
+# from densepose import DensePose
+from densepose import densepose
 import cv2
 from torch.utils.mobile_optimizer import optimize_for_mobile
 
@@ -23,9 +24,49 @@ def pad_to_square(image):
                                    cv2.BORDER_CONSTANT, value=0)
 
     return image
+VERSION = 'v0.0.2'
+
+# model = DensePose()
+model = densepose()
+# if pretrained:
+base_url = f'https://github.com/Licht-T/torch-densepose/releases/download/{VERSION}'
+# state_dict = torch.hub.load_state_dict_from_url(
+#     f'{base_url}/densepose_pretrained_msra-resnet101.pth',
+#     progress=True,
+#     file_name=f'densepose_pretrained_msra-resnet101_{VERSION}.pth'
+#     )
+filename = f'densepose_pretrained_msra-resnet101_{VERSION}.pth'
+state_dict = torch.load(f'densepose_pretrained_msra-resnet101_{VERSION}.pth')
+
+key_mapping = {
+    'rpn.head.conv.weight': 'rpn.rpn.head.conv.0.0.weight',
+    'rpn.head.conv.bias': 'rpn.rpn.head.conv.0.0.bias',
+    'rpn.head.cls_logits.weight': 'rpn.rpn.head.cls_logits.weight',
+    'rpn.head.cls_logits.bias': 'rpn.rpn.head.cls_logits.bias',
+    'rpn.head.bbox_pred.weight': 'rpn.rpn.head.bbox_pred.weight',
+    'rpn.head.bbox_pred.bias': 'rpn.rpn.head.bbox_pred.bias',
+    'roi_heads.box_head.fc6.weight':'roi_heads.roi_heads.box_head.fc6.weight',
+    'roi_heads.box_head.fc6.bias': "roi_heads.roi_heads.box_head.fc6.bias",
+    "roi_heads.box_head.fc7.weight": "roi_heads.roi_heads.box_head.fc7.weight",
+    "roi_heads.box_head.fc7.bias": "roi_heads.roi_heads.box_head.fc7.bias",
+    "roi_heads.box_predictor.cls_score.weight": "roi_heads.roi_heads.box_predictor.cls_score.weight",
+    "roi_heads.box_predictor.cls_score.bias": "roi_heads.roi_heads.box_predictor.cls_score.bias",
+    "roi_heads.box_predictor.bbox_pred.weight":"roi_heads.roi_heads.box_predictor.bbox_pred.weight",
+    "roi_heads.box_predictor.bbox_pred.bias": "roi_heads.roi_heads.box_predictor.bbox_pred.bias"
+
+    }
+
+new_state_dict = {}
+for key, value in state_dict.items():
+    if key in key_mapping:
+        new_key = key_mapping[key]
+    else:
+        new_key = key
+    new_state_dict[new_key] = value
+
+model.load_state_dict(new_state_dict)
 
 
-model = DensePose()
 device = torch.device('cpu')
 model.to(device)
 model.eval()

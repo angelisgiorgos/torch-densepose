@@ -53,7 +53,7 @@ class PanopticExtraFPNBlock(ExtraFPNBlock):
 
             self.last_level_pool = LastLevelMaxPool()
 
-    @torch.jit.ignore
+    @torch.jit.script_method
     def list_creation(self, results: List[Tensor], features: List[str], names: List[str]) -> \
             Tuple[List[int],
                   List[torch.Tensor]]:

@@ -1,2 +1,2 @@
 from .version import VERSION
-from .models.densepose import DensePose
+from .models.densepose import densepose

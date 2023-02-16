@@ -35,7 +35,7 @@ class DensePoseHead(nn.Module):
 
 class DensePosePredictor(nn.Module):
     def __init__(self, in_channels: int, num_segmentations: int, num_patches: int, kernel_size: Tuple[int, int],
-                 scale_factor: int):
+                 scale_factor: Optional[List[float]]):
         super().__init__()
 
         self.scale_factor = scale_factor
@@ -70,28 +70,30 @@ class DensePosePredictor(nn.Module):
             padding=padding
         )
 
-    def forward(self, x: Tensor) -> Tuple[Tensor, Tuple, Tuple, Tuple]:
+    def forward(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
+        factor = float(self.scale_factor)
+
         coarse_seg = F.interpolate(
             self.coarse_seg_conv(x),
-            scale_factor=self.scale_factor,
+            scale_factor=factor,
             mode='bilinear',
             align_corners=False
         )
         fine_seg = F.interpolate(
             self.fine_seg_conv(x),
-            scale_factor=self.scale_factor,
+            scale_factor=factor,
             mode='bilinear',
             align_corners=False
         )
         u = F.interpolate(
             self.u_conv(x),
-            scale_factor=self.scale_factor,
+            scale_factor=factor,
             mode='bilinear',
             align_corners=False
         )
         v = F.interpolate(
             self.v_conv(x),
-            scale_factor=self.scale_factor,
+            scale_factor=factor,
             mode='bilinear',
             align_corners=False
         )
@@ -99,7 +101,7 @@ class DensePosePredictor(nn.Module):
         return coarse_seg, fine_seg, u, v
 
 
-class DensePoseRoIHeads(RoIHeads):
+class DensePoseRoIHeads(nn.Module):
     def __init__(self,
                  box_roi_pool: MultiScaleRoIAlign,
                  box_head,
@@ -125,18 +127,19 @@ class DensePoseRoIHeads(RoIHeads):
                  densepose_head: DensePoseHead = None,
                  densepose_predictor: DensePosePredictor = None,
                  ):
-        super(DensePoseRoIHeads, self).__init__(
+        super().__init__()
+
+        self.densepose_roi_pool = densepose_roi_pool
+        self.densepose_head = densepose_head
+        self.densepose_predictor = densepose_predictor
+
+        self.roi_heads = RoIHeads(
             box_roi_pool, box_head, box_predictor,
             fg_iou_thresh, bg_iou_thresh, batch_size_per_image,
             positive_fraction, bbox_reg_weights, score_thresh,
             nms_thresh, detections_per_img, mask_roi_pool,
             mask_head, mask_predictor, keypoint_roi_pool,
-            keypoint_head, keypoint_predictor,
-        )
-
-        self.densepose_roi_pool = densepose_roi_pool
-        self.densepose_head = densepose_head
-        self.densepose_predictor = densepose_predictor
+            keypoint_head, keypoint_predictor,)
 
     def forward(self,
                 features: Dict[str, Tensor],
@@ -149,7 +152,7 @@ class DensePoseRoIHeads(RoIHeads):
                 # TODO: Assert DensePose training data are correct.
                 pass
 
-        results, losses = super(DensePoseRoIHeads, self).forward(features, proposals, image_shapes, targets)
+        results, losses = self.roi_heads(features, proposals, image_shapes, targets)
 
         densepose_features = self.densepose_roi_pool(
             features,
