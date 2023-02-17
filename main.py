@@ -72,7 +72,7 @@ model.to(device)
 model.eval()
 
 scripting = True
-onnx_export = False
+onnx_export = True
 
 image_path = 'D:/github-repos/certh_straps/demo/0006.png'
 
@@ -100,8 +100,8 @@ inp_img.save('./data/out_2_box.jpg')
 
 seg_img_array = np.zeros(img_array.shape[1:], dtype=np.uint8)
 for coarse_seg, fine_seg in zip(coarse_segs, fine_segs):
-    coarse_seg = coarse_seg.numpy().astype(np.uint8)
-    fine_seg = fine_seg.numpy().astype(np.uint8)
+    coarse_seg = coarse_seg.detach().numpy().astype(np.uint8)
+    fine_seg = fine_seg.detach().numpy().astype(np.uint8)
     seg = 10 * fine_seg * coarse_seg
 
     cond = seg_img_array == 0
@@ -114,14 +114,23 @@ seg_img.save('./data/out_2_seg.jpg')
 if scripting:
     scripted_model = torch.jit.script(model)
     scripted_model.save('./densepose_scripted.pt')
+    x = torch.randn(1, 3, 256, 256)
 
-    # Export lite interpreter version model (compatible with lite interpreter)
-    scripted_model._save_for_lite_interpreter('./densepose_scripted.ptl')
+    # # Export lite interpreter version model (compatible with lite interpreter)
+    # scripted_model._save_for_lite_interpreter('./densepose_scripted.ptl')
+    #
+    # optimized_scripted_model = optimize_for_mobile(scripted_model)
+    # # using optimized lite interpreter model makes inference about 60% faster than the non-optimized
+    # # lite interpreter model, which is about 6% faster than the non-optimized full jit model
+    # optimized_scripted_model._save_for_lite_interpreter('./densepose_scripted_optimized.ptl')
 
-    optimized_scripted_model = optimize_for_mobile(scripted_model)
-    # using optimized lite interpreter model makes inference about 60% faster than the non-optimized
-    # lite interpreter model, which is about 6% faster than the non-optimized full jit model
-    optimized_scripted_model._save_for_lite_interpreter('./densepose_scripted_optimized.ptl')
+    print(scripted_model.graph)
+
+    inputs = (torch.rand(1, 3, 256, 256),)
+    check_inputs = [(torch.rand(1, 3, 256, 256),), (torch.rand(1, 3, 256, 256),)]
+
+    # for input_tuple in [inputs] + check_inputs:
+    # torch.testing.assert_close(model(x), scripted_model(x))
 
 if onnx_export:
     input_names = ['input_image']
@@ -134,9 +143,11 @@ if onnx_export:
         'us': {0: 'batch_size', 1: 'channels', 2: 'width', 3: 'height'},
         'vs': {0: 'batch_size', 1: 'channels', 2: 'width', 3: 'height'}}
 
-    torch.onnx.export(model, (img_tensor.to(device),), 'densepose_3.onnx', opset_version=11,
-                      input_names=input_names,
-                      output_names=output_names,
-                      do_constant_folding=True,
-                      dynamic_axes=dyn_axes,
-                      export_params=True)
+    torch.onnx._export(scripted_model, (x), 'densepose_3.onnx', opset_version=16,
+                      # input_names=input_names,
+                      # output_names=output_names,
+                      # do_constant_folding=True,
+                      # dynamic_axes=dyn_axes,
+                      # export_params=True,
+                      # verbose=True
+                       )

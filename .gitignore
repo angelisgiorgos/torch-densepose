@@ -4,3 +4,8 @@
 .idea/
 __pycache__
 *.egg-info/
+
+*.ptl
+*.pt
+*.zip
+*.onnx
