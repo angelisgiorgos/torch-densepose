@@ -4,10 +4,56 @@ import torch
 from torch import Tensor
 import torch.nn.functional as F
 from torchvision.models.detection.roi_heads import expand_masks, expand_boxes
-from torchvision.models.detection.image_list import ImageList
-from torchvision.models.detection.transform import GeneralizedRCNNTransform
+from .gen_rcnn_transform import GeneralizedRCNNTransform,resize_boxes, resize_keypoints
 import torch.nn as nn
 
+
+def dense_postprocess(
+                result: List[Dict[str, Tensor]],
+                image_shapes: List[Tuple[int, int]],
+                original_image_sizes: List[Tuple[int, int]]
+                ) -> List[Dict[str, Tensor]]:
+    result = gen_rcnn_postprocess(result, image_shapes, original_image_sizes)
+
+
+    for i, (pred, im_s, o_im_s) in enumerate(zip(result, image_shapes, original_image_sizes)):
+        boxes = pred["boxes"]
+        if "coarse_segs" in pred:
+            coarse_segs = pred["coarse_segs"]
+            coarse_segs = paste_masks_in_image(coarse_segs, boxes, o_im_s)
+            result[i]["coarse_segs"] = coarse_segs
+        if "fine_segs" in pred:
+            fine_segs = pred["fine_segs"]
+            fine_segs = paste_masks_in_image(fine_segs, boxes, o_im_s)
+            result[i]["fine_segs"] = fine_segs
+        if "u" in pred:
+            # TODO: Implement
+            pass
+        if "v" in pred:
+            # TODO: Implement
+            pass
+
+    return result
+
+
+def gen_rcnn_postprocess(
+        result: List[Dict[str, Tensor]],
+        image_shapes: List[Tuple[int, int]],
+        original_image_sizes: List[Tuple[int, int]],
+        ) -> List[Dict[str, Tensor]]:
+    for i, (pred, im_s, o_im_s) in enumerate(zip(result, image_shapes, original_image_sizes)):
+        boxes = pred["boxes"]
+        boxes = resize_boxes(boxes, im_s, o_im_s)
+        result[i]["boxes"] = boxes
+        if "masks" in pred:
+            masks = pred["masks"]
+            masks = paste_masks_in_image(masks, boxes, o_im_s)
+            result[i]["masks"] = masks
+        if "keypoints" in pred:
+            keypoints = pred["keypoints"]
+            keypoints = resize_keypoints(keypoints, im_s, o_im_s)
+            result[i]["keypoints"] = keypoints
+    return result
 
 def paste_mask_in_image(mask: Tensor, box: Tensor, im_h: int, im_w: int) -> Tensor:
     TO_REMOVE = 1
@@ -58,38 +104,10 @@ class DensePoseRCNNTransform(nn.Module):
         self.grcnn = GeneralizedRCNNTransform(min_size, max_size, image_mean, image_std)
 
     def forward(self,
-                images: List[Tensor],
+                images: Tensor,
                 targets: Optional[List[Dict[str, Tensor]]] = None
-                ) -> Tuple[ImageList, Optional[List[Dict[str, Tensor]]]]:
+                ) -> Tuple[Tensor, List[Tuple[int, int]], Optional[List[Dict[str, Tensor]]]]:
         # TODO: DensePose target data transformation
+        output = self.grcnn(images, targets)
 
-        return self.grcnn(images, targets)
-
-    def postprocess(self,
-                    result: List[Dict[str, Tensor]],
-                    image_shapes: List[Tuple[int, int]],
-                    original_image_sizes: List[Tuple[int, int]]
-                    ) -> List[Dict[str, Tensor]]:
-        result = self.grcnn.postprocess(result, image_shapes, original_image_sizes)
-
-        if self.training:
-            return result
-
-        for i, (pred, im_s, o_im_s) in enumerate(zip(result, image_shapes, original_image_sizes)):
-            boxes = pred["boxes"]
-            if "coarse_segs" in pred:
-                coarse_segs = pred["coarse_segs"]
-                coarse_segs = paste_masks_in_image(coarse_segs, boxes, o_im_s)
-                result[i]["coarse_segs"] = coarse_segs
-            if "fine_segs" in pred:
-                fine_segs = pred["fine_segs"]
-                fine_segs = paste_masks_in_image(fine_segs, boxes, o_im_s)
-                result[i]["fine_segs"] = fine_segs
-            if "u" in pred:
-                # TODO: Implement
-                pass
-            if "v" in pred:
-                # TODO: Implement
-                pass
-
-        return result
+        return output

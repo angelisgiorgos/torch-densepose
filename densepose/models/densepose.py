@@ -9,11 +9,12 @@ import csv
 import PIL.Image
 import PIL.ImageDraw
 import torch.nn.functional
-from torchvision.models.detection.anchor_utils import AnchorGenerator
+from densepose.models.anchor_generator import MyAnchorGenerator
 from torchvision.models.detection.faster_rcnn import TwoMLPHead, FastRCNNPredictor
-from torchvision.models.detection.generalized_rcnn import GeneralizedRCNN
+# from torchvision.models.detection.generalized_rcnn import GeneralizedRCNN
+from .gen_rcnn import GeneralizedRCNN
 from torchvision.models.detection.rpn import RPNHead
-from torchvision.ops import MultiScaleRoIAlign
+from .poolers import MultiScaleRoIAlign
 
 from .msra_resnet import msra_resnet101
 from .extra_fpn_block import PanopticExtraFPNBlock
@@ -26,9 +27,10 @@ from torch import Tensor
 
 # class DensePose(nn.Module):
 #     def __init__(self, pretrained=True, backbone=None,
-def densepose(pretrained=True, backbone=None,
+def densepose(pretrained=True,
+              # backbone=None,
         min_size=(640, 672, 704, 736, 768, 800), max_size=1333,
-        image_mean=None, image_std=None,
+        # image_mean=None, image_std=None,
         # RPN parameters
         rpn_pre_nms_top_n_train=2000, rpn_pre_nms_top_n_test=1000,
         rpn_post_nms_top_n_train=2000, rpn_post_nms_top_n_test=1000,
@@ -40,7 +42,8 @@ def densepose(pretrained=True, backbone=None,
         box_score_thresh=0.05, box_nms_thresh=0.5, box_detections_per_img=100,
         box_fg_iou_thresh=0.5, box_bg_iou_thresh=0.5,
         box_batch_size_per_image=512, box_positive_fraction=0.25,
-        bbox_reg_weights=None):
+        # bbox_reg_weights=None
+              ):
     num_classes = 2  # Background: 0, Person: 1
     panoptic_out_channels = 256
 
@@ -64,18 +67,18 @@ def densepose(pretrained=True, backbone=None,
         image_mean = [123.675, 116.280, 103.530][::-1]
         image_std = [1.0, 1.0, 1.0]
 
-    if backbone is None:
-        backbone = tv.models.detection.backbone_utils.resnet_fpn_backbone(
-            backbone_name='resnet101',
-            pretrained=False,
-            trainable_layers=5,
-            extra_blocks=PanopticExtraFPNBlock(
-                featmap_names=['0', '1', '2', '3'],
-                in_channels=256,
-                out_channels=panoptic_out_channels,
-                conv_dims=256
-                )
-            )
+    # if backbone is None:
+    #     backbone = tv.models.detection.backbone_utils.resnet_fpn_backbone(
+    #         backbone_name='resnet101',
+    #         pretrained=False,
+    #         trainable_layers=5,
+    #         extra_blocks=PanopticExtraFPNBlock(
+    #             featmap_names=['0', '1', '2', '3'],
+    #             in_channels=256,
+    #             out_channels=panoptic_out_channels,
+    #             conv_dims=256
+    #             )
+    #         )
 
     if not hasattr(backbone, "out_channels"):
         raise ValueError(
@@ -87,7 +90,7 @@ def densepose(pretrained=True, backbone=None,
 
     anchor_sizes = ((32,), (64,), (128,), (256,), (512,))
     aspect_ratios = ((0.5, 1.0, 2.0),) * len(anchor_sizes)
-    rpn_anchor_generator = AnchorGenerator(
+    rpn_anchor_generator = MyAnchorGenerator(
         anchor_sizes, aspect_ratios
         )
 
@@ -140,6 +143,7 @@ def densepose(pretrained=True, backbone=None,
         scale_factor=2
         )
 
+    bbox_reg_weights = None
     roi_heads = DensePoseRoIHeads(
         box_roi_pool, box_head, box_predictor,
         box_fg_iou_thresh, box_bg_iou_thresh,

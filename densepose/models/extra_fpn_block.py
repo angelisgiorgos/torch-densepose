@@ -53,20 +53,20 @@ class PanopticExtraFPNBlock(ExtraFPNBlock):
 
             self.last_level_pool = LastLevelMaxPool()
 
-    @torch.jit.script_method
-    def list_creation(self, results: List[Tensor], features: List[str], names: List[str]) -> \
-            Tuple[List[int],
-                  List[torch.Tensor]]:
-        keys_list = []
-        for k in names:
-            if k in features:
-                keys_list.append(int(k))
-
-        values_list = []
-        for k, v in zip(names, results):
-            if k in features:
-                values_list.append(v)
-        return keys_list, values_list
+    # @torch.jit.script_method
+    # def list_creation(self, results: List[Tensor], features: List[str], names: List[str]) -> \
+    #         Tuple[List[int],
+    #               List[torch.Tensor]]:
+    #     keys_list = []
+    #     for k in names:
+    #         if k in features:
+    #             keys_list.append(int(k))
+    #
+    #     values_list = []
+    #     for k, v in zip(names, results):
+    #         if k in features:
+    #             values_list.append(v)
+    #     return keys_list, values_list
 
     def _get_layer_name(self, i: int):
         layer_name = "block{}".format(i)
@@ -83,7 +83,18 @@ class PanopticExtraFPNBlock(ExtraFPNBlock):
 
         results, names = self.last_level_pool(results, x, names)
 
-        keys, values = self.list_creation(results, self.featmap_names, names)
+        # print(type(names), type(self.featmap_names))
+
+        keys: List[int] = []
+        for k in names:
+            # print(type(k))
+            if k in self.featmap_names:
+                keys.append(int(k))
+
+        values: List[Tensor] = []
+        for k, v in zip(names, results):
+            if k in self.featmap_names:
+                values.append(v)
 
         out = getattr(self, 'block0')(values[0])
 
